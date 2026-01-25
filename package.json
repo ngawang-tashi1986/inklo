@@ -1,0 +1,28 @@
+{
+  "name": "inklo",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:realtime": "pnpm --filter @inlko/realtime dev",
+    "dev:web": "pnpm --filter @inlko/web dev",
+    "dev:mobile": "pnpm --filter @inlko/mobile start",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.28.1",
+  "pnpm": {
+    "overrides": {
+      "vite": "npm:rolldown-vite@7.2.5"
+    }
+  }
+}
+
+
