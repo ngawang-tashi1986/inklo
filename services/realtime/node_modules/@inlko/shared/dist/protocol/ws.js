@@ -15,8 +15,15 @@ export const MsgTypes = {
     PairCreated: "pair.created",
     PairClaim: "pair.claim",
     PairSuccess: "pair.success",
+    WbSnapshotRequest: "wb.snapshot.request",
+    WbSnapshot: "wb.snapshot",
     WbStrokeStart: "wb.stroke.start",
     WbStrokeMove: "wb.stroke.move",
     WbStrokeEnd: "wb.stroke.end",
-    WbClear: "wb.clear"
+    WbClear: "wb.clear",
+    WbStrokeRemove: "wb.stroke.remove",
+    WbStrokeRestore: "wb.stroke.restore",
+    WbUndo: "wb.undo",
+    WbRedo: "wb.redo",
+    CursorMove: "cursor.move"
 };

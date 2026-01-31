@@ -1,27 +1,19 @@
 {
   "name": "@inlko/realtime",
-  "version": "1.0.0",
-  "description": "",
-  "_main": "index.js",
+  "version": "0.0.1",
+  "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "dev": "tsx watch src/index.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "tsx watch src/index.ts"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "packageManager": "pnpm@10.28.1",
   "dependencies": {
     "@inlko/shared": "workspace:*",
-    "nanoid": "^5.1.6",
-    "ws": "^8.19.0"
+    "nanoid": "^5.0.7",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@types/node": "^25.0.10",
-    "@types/ws": "^8.18.1",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "@types/node": "^22.10.6",
+    "tsx": "4.19.2",
+    "typescript": "^5.7.3"
   }
 }

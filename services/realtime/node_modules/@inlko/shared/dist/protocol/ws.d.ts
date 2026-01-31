@@ -7,7 +7,21 @@ export declare const EnvelopeSchema: z.ZodObject<{
     roomId: z.ZodOptional<z.ZodString>;
     userId: z.ZodOptional<z.ZodString>;
     payload: z.ZodUnknown;
-}, z.core.$strip>;
+}, "strip", z.ZodTypeAny, {
+    v: 1;
+    type: string;
+    requestId?: string | undefined;
+    roomId?: string | undefined;
+    userId?: string | undefined;
+    payload?: unknown;
+}, {
+    v: 1;
+    type: string;
+    requestId?: string | undefined;
+    roomId?: string | undefined;
+    userId?: string | undefined;
+    payload?: unknown;
+}>;
 export type WsEnvelope<TPayload> = {
     v: typeof WS_VERSION;
     type: string;
@@ -32,6 +46,19 @@ export type StrokeMsg = {
     style: StrokeStyle;
     points: Point[];
 };
+export type CursorMsg = {
+    x: number;
+    y: number;
+    isDrawing?: boolean;
+};
+export type StrokeRemoveMsg = {
+    strokeId: string;
+};
+export type StrokeRestoreMsg = {
+    stroke: StrokeMsg & {
+        userId?: string;
+    };
+};
 export type PairCreated = {
     pairToken: string;
     expiresAt: number;
@@ -46,8 +73,15 @@ export declare const MsgTypes: {
     readonly PairCreated: "pair.created";
     readonly PairClaim: "pair.claim";
     readonly PairSuccess: "pair.success";
+    readonly WbSnapshotRequest: "wb.snapshot.request";
+    readonly WbSnapshot: "wb.snapshot";
     readonly WbStrokeStart: "wb.stroke.start";
     readonly WbStrokeMove: "wb.stroke.move";
     readonly WbStrokeEnd: "wb.stroke.end";
     readonly WbClear: "wb.clear";
+    readonly WbStrokeRemove: "wb.stroke.remove";
+    readonly WbStrokeRestore: "wb.stroke.restore";
+    readonly WbUndo: "wb.undo";
+    readonly WbRedo: "wb.redo";
+    readonly CursorMove: "cursor.move";
 };

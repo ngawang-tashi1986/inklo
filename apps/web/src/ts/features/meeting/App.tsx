@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+﻿import React, { useMemo, useState } from "react";
 import { nanoid } from "nanoid";
 import { QRCodeCanvas } from "qrcode.react";
 import { MsgTypes } from "@inlko/shared";
@@ -14,6 +14,7 @@ export function App() {
   const [pairToken, setPairToken] = useState<string | null>(null);
   const [pairStatus, setPairStatus] = useState<string>("Not paired");
   const [incoming, setIncoming] = useState<any>(null);
+  const [pendingPairCreate, setPendingPairCreate] = useState(false);
 
   const { send } = useMemo(() => {
     const c = createWs(`${REALTIME_URL}?role=web`, {
@@ -24,6 +25,7 @@ export function App() {
 
         if (msg?.type === MsgTypes.PairCreated) {
           setPairToken(msg.payload.pairToken);
+          setPendingPairCreate(false);
         }
         if (msg?.type === MsgTypes.PairSuccess) {
           setPairStatus(`Paired with mobile: ${msg.payload.mobileUserId}`);
@@ -31,10 +33,16 @@ export function App() {
         if (msg?.type?.startsWith("wb.")) {
           setIncoming(msg);
         }
+        if (msg?.type === MsgTypes.JoinedRoom) {
+          send(MsgTypes.WbSnapshotRequest, {}, roomId);
+          if (pendingPairCreate) {
+            send(MsgTypes.PairCreate, {}, roomId);
+          }
+        }
       }
     });
     return c;
-  }, []);
+  }, [roomId, pendingPairCreate]);
 
   function joinRoom() {
     send(MsgTypes.JoinRoom, { roomId });
@@ -43,7 +51,10 @@ export function App() {
   }
 
   function createPairToken() {
-    send(MsgTypes.PairCreate, {}, roomId);
+    // Ensure we're in the room before requesting a pairing token.
+    if (!connected) return;
+    setPendingPairCreate(true);
+    send(MsgTypes.JoinRoom, { roomId });
   }
 
   // QR payload: keep it simple for now: just token text.
@@ -97,3 +108,4 @@ export function App() {
     </div>
   );
 }
+

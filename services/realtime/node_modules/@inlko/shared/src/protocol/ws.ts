@@ -35,6 +35,15 @@ export type StrokeMsg = {
   points: Point[];
 };
 
+export type CursorMsg = {
+  x: number; // normalized 0..1
+  y: number; // normalized 0..1
+  isDrawing?: boolean;
+};
+
+export type StrokeRemoveMsg = { strokeId: string };
+export type StrokeRestoreMsg = { stroke: StrokeMsg & { userId?: string } };
+
 export type PairCreated = { pairToken: string; expiresAt: number };
 export type PairClaim = { pairToken: string };
 
@@ -47,8 +56,18 @@ export const MsgTypes = {
   PairClaim: "pair.claim",
   PairSuccess: "pair.success",
 
+  WbSnapshotRequest: "wb.snapshot.request",
+  WbSnapshot: "wb.snapshot",
+
   WbStrokeStart: "wb.stroke.start",
   WbStrokeMove: "wb.stroke.move",
   WbStrokeEnd: "wb.stroke.end",
-  WbClear: "wb.clear"
+  WbClear: "wb.clear",
+
+  WbStrokeRemove: "wb.stroke.remove",
+  WbStrokeRestore: "wb.stroke.restore",
+  WbUndo: "wb.undo",
+  WbRedo: "wb.redo",
+
+  CursorMove: "cursor.move"
 } as const;

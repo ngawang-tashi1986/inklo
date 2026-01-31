@@ -1,7 +1,7 @@
 import http from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { nanoid } from "nanoid";
-import { EnvelopeSchema, MsgTypes, WS_VERSION, type WsEnvelope } from "@inlko/shared";
+import { EnvelopeSchema, MsgTypes, WS_VERSION, type WsEnvelope, type StrokeMsg } from "@inlko/shared";
 
 type ClientMeta = {
   socket: WebSocket;
@@ -11,9 +11,14 @@ type ClientMeta = {
   pairedToUserId?: string; // for mobile companions
 };
 
+type StoredStroke = StrokeMsg & { userId: string };
+
 type Room = {
   roomId: string;
   clients: Set<ClientMeta>;
+  strokes: Map<string, StoredStroke>;
+  undo: Map<string, string[]>;
+  redo: Map<string, StoredStroke[]>;
 };
 
 type PairTokenInfo = {
@@ -33,10 +38,34 @@ const pairTokens = new Map<string, PairTokenInfo>();
 function getOrCreateRoom(roomId: string): Room {
   let room = rooms.get(roomId);
   if (!room) {
-    room = { roomId, clients: new Set() };
+    room = {
+      roomId,
+      clients: new Set(),
+      strokes: new Map(),
+      undo: new Map(),
+      redo: new Map()
+    };
     rooms.set(roomId, room);
   }
   return room;
+}
+
+function getUndoStack(room: Room, userId: string) {
+  let s = room.undo.get(userId);
+  if (!s) {
+    s = [];
+    room.undo.set(userId, s);
+  }
+  return s;
+}
+
+function getRedoStack(room: Room, userId: string) {
+  let s = room.redo.get(userId);
+  if (!s) {
+    s = [];
+    room.redo.set(userId, s);
+  }
+  return s;
 }
 
 function safeSend(ws: WebSocket, msg: unknown) {
@@ -109,12 +138,103 @@ wss.on("connection", (socket, req) => {
         payload: { ok: true }
       });
 
+      // Send snapshot to the newly joined client
+      const snapshot = {
+        v: WS_VERSION,
+        type: MsgTypes.WbSnapshot,
+        roomId,
+        payload: {
+          strokes: Array.from(room.strokes.values())
+        }
+      };
+      safeSend(socket, snapshot);
+
       return;
     }
 
     // Must be in a room after this point
     const roomId = client.roomId;
     if (!roomId) return;
+
+    if (type === MsgTypes.WbUndo) {
+      const room = rooms.get(roomId);
+      if (!room) return;
+
+      const undoStack = getUndoStack(room, client.userId);
+      const redoStack = getRedoStack(room, client.userId);
+
+      // pop until we find a stroke that still exists and belongs to user
+      while (undoStack.length > 0) {
+        const strokeId = undoStack.pop()!;
+        const stroke = room.strokes.get(strokeId);
+        if (!stroke) continue;
+        if (stroke.userId !== client.userId) continue;
+
+        room.strokes.delete(strokeId);
+        redoStack.push(stroke);
+
+        broadcast(roomId, {
+          v: WS_VERSION,
+          type: MsgTypes.WbStrokeRemove,
+          roomId,
+          userId: client.userId,
+          payload: { strokeId }
+        });
+
+        return;
+      }
+      return;
+    }
+
+    if (type === MsgTypes.WbRedo) {
+      const room = rooms.get(roomId);
+      if (!room) return;
+
+      const undoStack = getUndoStack(room, client.userId);
+      const redoStack = getRedoStack(room, client.userId);
+
+      const stroke = redoStack.pop();
+      if (!stroke) return;
+
+      room.strokes.set(stroke.strokeId, stroke);
+      undoStack.push(stroke.strokeId);
+
+      broadcast(roomId, {
+        v: WS_VERSION,
+        type: MsgTypes.WbStrokeRestore,
+        roomId,
+        userId: client.userId,
+        payload: { stroke }
+      });
+
+      return;
+    }
+
+    if (type === MsgTypes.WbSnapshotRequest) {
+      const room = rooms.get(roomId);
+      if (!room) return;
+
+      safeSend(socket, {
+        v: WS_VERSION,
+        type: MsgTypes.WbSnapshot,
+        roomId,
+        payload: { strokes: Array.from(room.strokes.values()) }
+      });
+      return;
+    }
+
+    if (type === MsgTypes.CursorMove) {
+      const outgoing = {
+        v: WS_VERSION,
+        type,
+        roomId,
+        userId: client.userId,
+        payload
+      };
+      // broadcast to everyone EXCEPT sender (optional)
+      broadcast(roomId, outgoing, socket);
+      return;
+    }
 
     // pair.create (web only)
     if (type === MsgTypes.PairCreate) {
@@ -208,7 +328,42 @@ wss.on("connection", (socket, req) => {
       type === MsgTypes.WbStrokeEnd ||
       type === MsgTypes.WbClear
     ) {
-      // attach sender identity (server authoritative)
+      const room = rooms.get(roomId);
+      if (!room) return;
+
+      if (type === MsgTypes.WbClear) {
+        room.strokes.clear();
+        room.undo.clear();
+        room.redo.clear();
+        const outgoing = { v: WS_VERSION, type, roomId, userId: client.userId, payload: {} };
+        broadcast(roomId, outgoing);
+        return;
+      }
+
+      const msg = payload as StrokeMsg;
+      const existing = room.strokes.get(msg.strokeId);
+
+      if (!existing) {
+        if (type === MsgTypes.WbStrokeStart) {
+          const undoStack = getUndoStack(room, client.userId);
+          undoStack.push(msg.strokeId);
+
+          const redoStack = getRedoStack(room, client.userId);
+          redoStack.length = 0;
+        }
+        // create stroke
+        room.strokes.set(msg.strokeId, {
+          ...msg,
+          userId: client.userId,
+          points: [...msg.points]
+        });
+      } else {
+        // append points
+        existing.points.push(...msg.points);
+        // style might come again; keep latest
+        existing.style = msg.style;
+      }
+
       const outgoing = {
         v: WS_VERSION,
         type,

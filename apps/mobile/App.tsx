@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { SafeAreaView, Text, View, Button, StyleSheet, Dimensions } from "react-native";
+﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Text, View, Button, StyleSheet, Dimensions } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { nanoid } from "nanoid/non-secure";
 import Svg, { Polyline } from "react-native-svg";
@@ -36,6 +37,10 @@ export default function App() {
         if (msg?.type === MsgTypes.PairSuccess) {
           setPaired(true);
           setScreen("draw");
+        }
+        if (msg?.type === MsgTypes.JoinedRoom) {
+          // ask server for latest board state (safe even if empty)
+          send(MsgTypes.WbSnapshotRequest, {}, msg.roomId);
         }
       } catch {}
     };
@@ -91,6 +96,7 @@ export default function App() {
 
     const move: StrokeMsg = { strokeId: activeStrokeId, style, points: [p] };
     send(MsgTypes.WbStrokeMove, move, roomId);
+    send(MsgTypes.CursorMove, { x: p.x, y: p.y, isDrawing: true }, roomId);
   }
 
   function onTouchEnd() {
@@ -162,12 +168,21 @@ export default function App() {
         onResponderTerminate={onTouchEnd}
       >
         <Svg width="100%" height="100%">
-          <Polyline points={polyPoints} fill="none" stroke="#111111" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+          <Polyline
+            points={polyPoints}
+            fill="none"
+            stroke="#111111"
+            strokeWidth={3}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
         </Svg>
       </View>
 
       <View style={{ height: 10 }} />
       <View style={{ flexDirection: "row", gap: 10 }}>
+        <Button title="Undo" onPress={() => send(MsgTypes.WbUndo, {}, roomId)} />
+        <Button title="Redo" onPress={() => send(MsgTypes.WbRedo, {}, roomId)} />
         <Button
           title="Clear (web too)"
           onPress={() => {
