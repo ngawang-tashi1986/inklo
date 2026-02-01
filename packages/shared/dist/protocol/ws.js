@@ -25,5 +25,6 @@ export const MsgTypes = {
     WbStrokeRestore: "wb.stroke.restore",
     WbUndo: "wb.undo",
     WbRedo: "wb.redo",
+    WbHistory: "wb.history",
     CursorMove: "cursor.move"
 };

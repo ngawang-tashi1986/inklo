@@ -1,7 +1,7 @@
 import http from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { nanoid } from "nanoid";
-import { EnvelopeSchema, MsgTypes, WS_VERSION, type WsEnvelope, type StrokeMsg } from "@inlko/shared";
+import { EnvelopeSchema, MsgTypes, WS_VERSION, type WsEnvelope, type StrokeMsg, type WbHistoryMsg } from "@inlko/shared";
 
 type ClientMeta = {
   socket: WebSocket;
@@ -70,6 +70,26 @@ function getRedoStack(room: Room, userId: string) {
 
 function safeSend(ws: WebSocket, msg: unknown) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+}
+
+function sendHistory(room: Room, client: ClientMeta) {
+  const undoStack = getUndoStack(room, client.userId);
+  const redoStack = getRedoStack(room, client.userId);
+
+  const payload: WbHistoryMsg = {
+    canUndo: undoStack.length > 0,
+    canRedo: redoStack.length > 0,
+    undoCount: undoStack.length,
+    redoCount: redoStack.length
+  };
+
+  safeSend(client.socket, {
+    v: WS_VERSION,
+    type: MsgTypes.WbHistory,
+    roomId: room.roomId,
+    userId: client.userId,
+    payload
+  });
 }
 
 function broadcast(roomId: string, msg: unknown, except?: WebSocket) {
@@ -148,6 +168,7 @@ wss.on("connection", (socket, req) => {
         }
       };
       safeSend(socket, snapshot);
+      sendHistory(room, client);
 
       return;
     }
@@ -181,6 +202,8 @@ wss.on("connection", (socket, req) => {
           payload: { strokeId }
         });
 
+        sendHistory(room, client);
+
         return;
       }
       return;
@@ -206,6 +229,8 @@ wss.on("connection", (socket, req) => {
         userId: client.userId,
         payload: { stroke }
       });
+
+      sendHistory(room, client);
 
       return;
     }
@@ -337,6 +362,7 @@ wss.on("connection", (socket, req) => {
         room.redo.clear();
         const outgoing = { v: WS_VERSION, type, roomId, userId: client.userId, payload: {} };
         broadcast(roomId, outgoing);
+        sendHistory(room, client);
         return;
       }
 
@@ -350,6 +376,8 @@ wss.on("connection", (socket, req) => {
 
           const redoStack = getRedoStack(room, client.userId);
           redoStack.length = 0;
+
+          sendHistory(room, client);
         }
         // create stroke
         room.strokes.set(msg.strokeId, {

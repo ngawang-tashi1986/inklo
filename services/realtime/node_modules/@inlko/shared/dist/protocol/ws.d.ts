@@ -59,6 +59,12 @@ export type StrokeRestoreMsg = {
         userId?: string;
     };
 };
+export type WbHistoryMsg = {
+    canUndo: boolean;
+    canRedo: boolean;
+    undoCount: number;
+    redoCount: number;
+};
 export type PairCreated = {
     pairToken: string;
     expiresAt: number;
@@ -83,5 +89,6 @@ export declare const MsgTypes: {
     readonly WbStrokeRestore: "wb.stroke.restore";
     readonly WbUndo: "wb.undo";
     readonly WbRedo: "wb.redo";
+    readonly WbHistory: "wb.history";
     readonly CursorMove: "cursor.move";
 };

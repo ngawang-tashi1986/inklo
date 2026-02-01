@@ -6,7 +6,7 @@ import { nanoid } from "nanoid/non-secure";
 import Svg, { Polyline } from "react-native-svg";
 import { MsgTypes, WS_VERSION, type Point, type StrokeMsg } from "@inlko/shared";
 
-const REALTIME_URL = "ws://172.20.10.3:8080";
+const REALTIME_URL = process.env.EXPO_PUBLIC_REALTIME_URL ?? "ws://172.20.10.3:8080";
 
 type Screen = "scan" | "draw";
 
@@ -20,8 +20,16 @@ export default function App() {
 
   const [localPoints, setLocalPoints] = useState<Point[]>([]);
   const [activeStrokeId, setActiveStrokeId] = useState<string | null>(null);
+  const [history, setHistory] = useState({
+    canUndo: false,
+    canRedo: false,
+    undoCount: 0,
+    redoCount: 0
+  });
 
   const wsRef = useRef<WebSocket | null>(null);
+  const pointBufferRef = useRef<Point[]>([]);
+  const flushTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!permission) requestPermission();
@@ -37,6 +45,14 @@ export default function App() {
         if (msg?.type === MsgTypes.PairSuccess) {
           setPaired(true);
           setScreen("draw");
+        }
+        if (msg?.type === MsgTypes.WbHistory) {
+          setHistory({
+            canUndo: !!msg.payload?.canUndo,
+            canRedo: !!msg.payload?.canRedo,
+            undoCount: Number(msg.payload?.undoCount ?? 0),
+            redoCount: Number(msg.payload?.redoCount ?? 0)
+          });
         }
         if (msg?.type === MsgTypes.JoinedRoom) {
           // ask server for latest board state (safe even if empty)
@@ -77,6 +93,26 @@ export default function App() {
     return { x: nx, y: ny, t: Date.now() };
   }
 
+  function flushPoints() {
+    if (!activeStrokeId) return;
+    const pts = pointBufferRef.current;
+    if (pts.length === 0) return;
+
+    const chunk = pts.splice(0, pts.length);
+    const move: StrokeMsg = { strokeId: activeStrokeId, style, points: chunk };
+    send(MsgTypes.WbStrokeMove, move, roomId);
+  }
+
+  function startFlushLoop() {
+    if (flushTimerRef.current) return;
+    flushTimerRef.current = setInterval(() => flushPoints(), 16);
+  }
+
+  function stopFlushLoop() {
+    if (flushTimerRef.current) clearInterval(flushTimerRef.current);
+    flushTimerRef.current = null;
+  }
+
   function onTouchStart(x: number, y: number) {
     const sid = nanoid(10);
     setActiveStrokeId(sid);
@@ -86,6 +122,8 @@ export default function App() {
 
     const start: StrokeMsg = { strokeId: sid, style, points: [p] };
     send(MsgTypes.WbStrokeStart, start, roomId);
+    pointBufferRef.current = [];
+    startFlushLoop();
   }
 
   function onTouchMove(x: number, y: number) {
@@ -94,15 +132,15 @@ export default function App() {
     const p = norm(x, y);
     setLocalPoints((prev) => [...prev, p]);
 
-    const move: StrokeMsg = { strokeId: activeStrokeId, style, points: [p] };
-    send(MsgTypes.WbStrokeMove, move, roomId);
+    pointBufferRef.current.push(p);
     send(MsgTypes.CursorMove, { x: p.x, y: p.y, isDrawing: true }, roomId);
   }
 
   function onTouchEnd() {
     if (!activeStrokeId) return;
-    const end: StrokeMsg = { strokeId: activeStrokeId, style, points: [] };
-    send(MsgTypes.WbStrokeEnd, end, roomId);
+    flushPoints();
+    stopFlushLoop();
+    send(MsgTypes.WbStrokeEnd, { strokeId: activeStrokeId, style, points: [] }, roomId);
     setActiveStrokeId(null);
   }
 
@@ -180,9 +218,17 @@ export default function App() {
       </View>
 
       <View style={{ height: 10 }} />
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        <Button title="Undo" onPress={() => send(MsgTypes.WbUndo, {}, roomId)} />
-        <Button title="Redo" onPress={() => send(MsgTypes.WbRedo, {}, roomId)} />
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+        <Button
+          title={`Undo (${history.undoCount})`}
+          disabled={!history.canUndo}
+          onPress={() => send(MsgTypes.WbUndo, {}, roomId)}
+        />
+        <Button
+          title={`Redo (${history.redoCount})`}
+          disabled={!history.canRedo}
+          onPress={() => send(MsgTypes.WbRedo, {}, roomId)}
+        />
         <Button
           title="Clear (web too)"
           onPress={() => {
@@ -195,6 +241,7 @@ export default function App() {
           onPress={() => {
             setPaired(false);
             setLocalPoints([]);
+            setHistory({ canUndo: false, canRedo: false, undoCount: 0, redoCount: 0 });
             setScreen("scan");
           }}
         />

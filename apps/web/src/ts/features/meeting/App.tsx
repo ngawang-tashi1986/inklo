@@ -15,6 +15,7 @@ export function App() {
   const [pairStatus, setPairStatus] = useState<string>("Not paired");
   const [incoming, setIncoming] = useState<any>(null);
   const [pendingPairCreate, setPendingPairCreate] = useState(false);
+  const [history, setHistory] = useState({ canUndo: false, canRedo: false, undoCount: 0, redoCount: 0 });
 
   const { send } = useMemo(() => {
     const c = createWs(`${REALTIME_URL}?role=web`, {
@@ -32,6 +33,9 @@ export function App() {
         }
         if (msg?.type?.startsWith("wb.")) {
           setIncoming(msg);
+        }
+        if (msg?.type === MsgTypes.WbHistory) {
+          setHistory(msg.payload);
         }
         if (msg?.type === MsgTypes.JoinedRoom) {
           send(MsgTypes.WbSnapshotRequest, {}, roomId);
@@ -102,7 +106,7 @@ export function App() {
 
         <div className="card" style={{ flex: 1, minWidth: 340 }}>
           <h3 style={{ marginTop: 0 }}>Whiteboard</h3>
-          <WhiteboardCanvas roomId={roomId} send={send} incomingStroke={incoming} />
+          <WhiteboardCanvas roomId={roomId} send={send} incomingStroke={incoming} history={history} />
         </div>
       </div>
     </div>

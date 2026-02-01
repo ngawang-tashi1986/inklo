@@ -43,6 +43,12 @@ export type CursorMsg = {
 
 export type StrokeRemoveMsg = { strokeId: string };
 export type StrokeRestoreMsg = { stroke: StrokeMsg & { userId?: string } };
+export type WbHistoryMsg = {
+  canUndo: boolean;
+  canRedo: boolean;
+  undoCount: number;
+  redoCount: number;
+};
 
 export type PairCreated = { pairToken: string; expiresAt: number };
 export type PairClaim = { pairToken: string };
@@ -68,6 +74,7 @@ export const MsgTypes = {
   WbStrokeRestore: "wb.stroke.restore",
   WbUndo: "wb.undo",
   WbRedo: "wb.redo",
+  WbHistory: "wb.history",
 
   CursorMove: "cursor.move"
 } as const;

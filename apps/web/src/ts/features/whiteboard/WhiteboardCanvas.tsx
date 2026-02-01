@@ -6,6 +6,7 @@ type Props = {
   roomId: string;
   send: (type: string, payload: any, roomId?: string) => void;
   incomingStroke?: { userId?: string; type: string; payload: any } | null;
+  history: { canUndo: boolean; canRedo: boolean; undoCount: number; redoCount: number };
   width?: number;
   height?: number;
 };
@@ -18,16 +19,43 @@ function normPoint(x: number, y: number, rect: DOMRect): Point {
   return { x: nx, y: ny, t: Date.now() };
 }
 
-export function WhiteboardCanvas({ roomId, send, incomingStroke, width = 800, height = 500 }: Props) {
+function colorFromUserId(id: string) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  const hue = h % 360;
+  return `hsl(${hue} 80% 45%)`;
+}
+
+export function WhiteboardCanvas({ roomId, send, incomingStroke, history, width = 800, height = 500 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [activeStrokeId, setActiveStrokeId] = useState<string | null>(null);
   const [cursors, setCursors] = useState<Record<string, { x: number; y: number; t: number }>>({});
+  const pointBufferRef = useRef<Point[]>([]);
+  const flushRafRef = useRef<number | null>(null);
 
   const style = useMemo(
     () => ({ tool: "pen" as const, color: "#111111", width: 0.004, opacity: 1 }),
     []
   );
+
+  function flushPoints() {
+    if (!activeStrokeId) return;
+    const pts = pointBufferRef.current;
+    if (pts.length === 0) return;
+
+    const chunk = pts.splice(0, pts.length);
+    const move: StrokeMsg = { strokeId: activeStrokeId, style, points: chunk };
+    send(MsgTypes.WbStrokeMove, move, roomId);
+  }
+
+  function scheduleFlush() {
+    if (flushRafRef.current != null) return;
+    flushRafRef.current = requestAnimationFrame(() => {
+      flushRafRef.current = null;
+      flushPoints();
+    });
+  }
 
   // Render all strokes
   useEffect(() => {
@@ -54,10 +82,26 @@ export function WhiteboardCanvas({ roomId, send, incomingStroke, width = 800, he
       if (pts.length < 2) continue;
 
       ctx.beginPath();
-      ctx.moveTo(pts[0].x * canvas.width, pts[0].y * canvas.height);
+
+      const p0x = pts[0].x * canvas.width;
+      const p0y = pts[0].y * canvas.height;
+      ctx.moveTo(p0x, p0y);
+
       for (let i = 1; i < pts.length; i++) {
-        ctx.lineTo(pts[i].x * canvas.width, pts[i].y * canvas.height);
+        const prev = pts[i - 1];
+        const curr = pts[i];
+
+        const prevX = prev.x * canvas.width;
+        const prevY = prev.y * canvas.height;
+        const currX = curr.x * canvas.width;
+        const currY = curr.y * canvas.height;
+
+        const midX = (prevX + currX) / 2;
+        const midY = (prevY + currY) / 2;
+
+        ctx.quadraticCurveTo(prevX, prevY, midX, midY);
       }
+
       ctx.stroke();
     }
 
@@ -152,9 +196,8 @@ export function WhiteboardCanvas({ roomId, send, incomingStroke, width = 800, he
     const rect = canvas.getBoundingClientRect();
 
     const p = normPoint(ev.clientX, ev.clientY, rect);
-    const move: StrokeMsg = { strokeId: activeStrokeId, style, points: [p] };
-
-    send(MsgTypes.WbStrokeMove, move, roomId);
+    pointBufferRef.current.push(p);
+    scheduleFlush();
   }
 
   function sendCursor(ev: React.PointerEvent) {
@@ -167,6 +210,7 @@ export function WhiteboardCanvas({ roomId, send, incomingStroke, width = 800, he
 
   function endStroke() {
     if (!activeStrokeId) return;
+    flushPoints();
     const end: StrokeMsg = { strokeId: activeStrokeId, style, points: [] };
     send(MsgTypes.WbStrokeEnd, end, roomId);
     setActiveStrokeId(null);
@@ -174,9 +218,13 @@ export function WhiteboardCanvas({ roomId, send, incomingStroke, width = 800, he
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-        <button onClick={() => send(MsgTypes.WbUndo, {}, roomId)}>Undo</button>
-        <button onClick={() => send(MsgTypes.WbRedo, {}, roomId)}>Redo</button>
+      <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+        <button disabled={!history.canUndo} onClick={() => send(MsgTypes.WbUndo, {}, roomId)}>
+          Undo ({history.undoCount})
+        </button>
+        <button disabled={!history.canRedo} onClick={() => send(MsgTypes.WbRedo, {}, roomId)}>
+          Redo ({history.redoCount})
+        </button>
         <button onClick={() => send(MsgTypes.WbClear, {}, roomId)}>Clear</button>
         <div className="small">Undo/Redo affects only your strokes.</div>
       </div>
@@ -207,7 +255,7 @@ export function WhiteboardCanvas({ roomId, send, incomingStroke, width = 800, he
                 width: 8,
                 height: 8,
                 borderRadius: 999,
-                background: "red",
+                background: colorFromUserId(uid),
                 pointerEvents: "none",
               }}
               title={uid}
