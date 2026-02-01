@@ -65,6 +65,27 @@ export type WbHistoryMsg = {
     undoCount: number;
     redoCount: number;
 };
+export type RtcPeersMsg = {
+    peers: string[];
+};
+export type RtcPeerJoinedMsg = {
+    userId: string;
+};
+export type RtcPeerLeftMsg = {
+    userId: string;
+};
+export type RtcOfferMsg = {
+    toUserId: string;
+    sdp: RTCSessionDescriptionInit;
+};
+export type RtcAnswerMsg = {
+    toUserId: string;
+    sdp: RTCSessionDescriptionInit;
+};
+export type RtcIceMsg = {
+    toUserId: string;
+    candidate: RTCIceCandidateInit;
+};
 export type PairCreated = {
     pairToken: string;
     expiresAt: number;
@@ -90,5 +111,11 @@ export declare const MsgTypes: {
     readonly WbUndo: "wb.undo";
     readonly WbRedo: "wb.redo";
     readonly WbHistory: "wb.history";
+    readonly RtcPeers: "rtc.peers";
+    readonly RtcPeerJoined: "rtc.peer.joined";
+    readonly RtcPeerLeft: "rtc.peer.left";
+    readonly RtcOffer: "rtc.offer";
+    readonly RtcAnswer: "rtc.answer";
+    readonly RtcIce: "rtc.ice";
     readonly CursorMove: "cursor.move";
 };

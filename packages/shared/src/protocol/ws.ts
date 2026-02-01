@@ -49,6 +49,27 @@ export type WbHistoryMsg = {
   undoCount: number;
   redoCount: number;
 };
+export type RtcPeersMsg = {
+  peers: string[]; // userIds in the room (excluding you)
+};
+export type RtcPeerJoinedMsg = {
+  userId: string;
+};
+export type RtcPeerLeftMsg = {
+  userId: string;
+};
+export type RtcOfferMsg = {
+  toUserId: string;
+  sdp: RTCSessionDescriptionInit;
+};
+export type RtcAnswerMsg = {
+  toUserId: string;
+  sdp: RTCSessionDescriptionInit;
+};
+export type RtcIceMsg = {
+  toUserId: string;
+  candidate: RTCIceCandidateInit;
+};
 
 export type PairCreated = { pairToken: string; expiresAt: number };
 export type PairClaim = { pairToken: string };
@@ -75,6 +96,14 @@ export const MsgTypes = {
   WbUndo: "wb.undo",
   WbRedo: "wb.redo",
   WbHistory: "wb.history",
+
+  // WebRTC signaling
+  RtcPeers: "rtc.peers",
+  RtcPeerJoined: "rtc.peer.joined",
+  RtcPeerLeft: "rtc.peer.left",
+  RtcOffer: "rtc.offer",
+  RtcAnswer: "rtc.answer",
+  RtcIce: "rtc.ice",
 
   CursorMove: "cursor.move"
 } as const;

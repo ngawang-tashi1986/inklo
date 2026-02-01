@@ -165,6 +165,21 @@ function broadcast(roomId: string, msg: unknown, except?: WebSocket) {
   }
 }
 
+function listPeerUserIds(room: Room, excludeUserId: string) {
+  const ids: string[] = [];
+  for (const c of room.clients) {
+    if (c.userId !== excludeUserId) ids.push(c.userId);
+  }
+  return ids;
+}
+
+function findClientByUserId(room: Room, userId: string) {
+  for (const c of room.clients) {
+    if (c.userId === userId) return c;
+  }
+  return null;
+}
+
 function cleanupExpiredTokens() {
   const now = Date.now();
   for (const [token, info] of pairTokens.entries()) {
@@ -206,12 +221,44 @@ wss.on("connection", (socket, req) => {
       // move client between rooms if needed
       if (client.roomId) {
         const oldRoom = rooms.get(client.roomId);
-        oldRoom?.clients.delete(client);
+        if (oldRoom) {
+          oldRoom.clients.delete(client);
+
+          // notify old room that this peer left
+          broadcast(oldRoom.roomId, {
+            v: WS_VERSION,
+            type: MsgTypes.RtcPeerLeft,
+            roomId: oldRoom.roomId,
+            payload: { userId: client.userId }
+          });
+
+          if (oldRoom.clients.size === 0) rooms.delete(oldRoom.roomId);
+        }
       }
 
       client.roomId = roomId;
       const room = getOrCreateRoom(roomId);
       room.clients.add(client);
+
+      // 1) Send current peers to the newly joined client
+      safeSend(socket, {
+        v: WS_VERSION,
+        type: MsgTypes.RtcPeers,
+        roomId,
+        payload: { peers: listPeerUserIds(room, client.userId) }
+      });
+
+      // 2) Notify existing peers that a new peer joined
+      broadcast(
+        roomId,
+        {
+          v: WS_VERSION,
+          type: MsgTypes.RtcPeerJoined,
+          roomId,
+          payload: { userId: client.userId }
+        },
+        socket
+      );
 
       safeSend(socket, {
         v: WS_VERSION,
@@ -240,6 +287,29 @@ wss.on("connection", (socket, req) => {
     // Must be in a room after this point
     const roomId = client.roomId;
     if (!roomId) return;
+
+    // WebRTC signaling relay (offer/answer/ice)
+    if (type === MsgTypes.RtcOffer || type === MsgTypes.RtcAnswer || type === MsgTypes.RtcIce) {
+      const room = rooms.get(roomId);
+      if (!room) return;
+
+      const toUserId = String(payload?.toUserId ?? "");
+      if (!toUserId) return;
+
+      const target = findClientByUserId(room, toUserId);
+      if (!target) return;
+
+      // Relay to the target. Sender identity is in envelope.userId.
+      safeSend(target.socket, {
+        v: WS_VERSION,
+        type,
+        roomId,
+        userId: client.userId,
+        payload
+      });
+
+      return;
+    }
 
     if (type === MsgTypes.WbUndo) {
       const room = rooms.get(roomId);
@@ -477,8 +547,18 @@ wss.on("connection", (socket, req) => {
   socket.on("close", () => {
     if (client.roomId) {
       const room = rooms.get(client.roomId);
-      room?.clients.delete(client);
-      if (room && room.clients.size === 0) rooms.delete(room.roomId);
+      if (room) {
+        room.clients.delete(client);
+
+        broadcast(room.roomId, {
+          v: WS_VERSION,
+          type: MsgTypes.RtcPeerLeft,
+          roomId: room.roomId,
+          payload: { userId: client.userId }
+        });
+
+        if (room.clients.size === 0) rooms.delete(room.roomId);
+      }
     }
   });
 

@@ -1,9 +1,10 @@
-ï»¿import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useRef, useEffect } from "react";
 import { nanoid } from "nanoid";
 import { QRCodeCanvas } from "qrcode.react";
 import { MsgTypes } from "@inlko/shared";
 import { createWs } from "../../shared/wsClient";
 import { WhiteboardCanvas } from "../whiteboard/WhiteboardCanvas";
+import { useWebRtc } from "./useWebRtc";
 
 const REALTIME_URL = "ws://localhost:8080";
 
@@ -16,6 +17,10 @@ export function App() {
   const [incoming, setIncoming] = useState<any>(null);
   const [pendingPairCreate, setPendingPairCreate] = useState(false);
   const [history, setHistory] = useState({ canUndo: false, canRedo: false, undoCount: 0, redoCount: 0 });
+  const [peers, setPeers] = useState<string[]>([]);
+  const [joinMic, setJoinMic] = useState(true);
+  const [joinCam, setJoinCam] = useState(true);
+  const [sharing, setSharing] = useState(false);
 
   const { send } = useMemo(() => {
     const c = createWs(`${REALTIME_URL}?role=web`, {
@@ -37,7 +42,30 @@ export function App() {
         if (msg?.type === MsgTypes.WbHistory) {
           setHistory(msg.payload);
         }
+        if (msg?.type === MsgTypes.RtcPeers) {
+          const list = (msg.payload?.peers ?? []) as string[];
+          setPeers(list);
+          handlePeers(list);
+        }
+        if (msg?.type === MsgTypes.RtcPeerJoined) {
+          const pid = msg.payload?.userId as string;
+          setPeers((prev) => (prev.includes(pid) ? prev : [...prev, pid]));
+          handlePeerJoined(pid);
+        }
+        if (msg?.type === MsgTypes.RtcPeerLeft) {
+          const pid = msg.payload?.userId as string;
+          setPeers((prev) => prev.filter((x) => x !== pid));
+          handlePeerLeft(pid);
+        }
+        if (
+          msg?.type === MsgTypes.RtcOffer ||
+          msg?.type === MsgTypes.RtcAnswer ||
+          msg?.type === MsgTypes.RtcIce
+        ) {
+          handleSignal(msg);
+        }
         if (msg?.type === MsgTypes.JoinedRoom) {
+          setUserId(msg.userId);
           send(MsgTypes.WbSnapshotRequest, {}, roomId);
           if (pendingPairCreate) {
             send(MsgTypes.PairCreate, {}, roomId);
@@ -47,6 +75,25 @@ export function App() {
     });
     return c;
   }, [roomId, pendingPairCreate]);
+
+  const {
+    localStream,
+    remoteStreams,
+    peerStatus,
+    micEnabled,
+    camEnabled,
+    startMedia,
+    stopMedia,
+    startScreenShare,
+    stopScreenShare,
+    toggleMic,
+    toggleCam,
+    handlePeers,
+    handlePeerJoined,
+    handlePeerLeft,
+    handleSignal,
+    closeAll
+  } = useWebRtc({ roomId, localUserId: userId, send });
 
   function joinRoom() {
     send(MsgTypes.JoinRoom, { roomId });
@@ -68,7 +115,7 @@ export function App() {
 
   return (
     <div className="container">
-      <h2>inlko (MVP) â€” Web Whiteboard + Mobile Companion</h2>
+      <h2>inlko (MVP) — Web Whiteboard + Mobile Companion</h2>
 
       <div className="row">
         <div className="card" style={{ minWidth: 320 }}>
@@ -78,7 +125,7 @@ export function App() {
           </div>
 
           <div className="small" style={{ marginTop: 8 }}>
-            Web userId: {userId ?? "â€¦"}
+            Web userId: {userId ?? "…"}
           </div>
 
           <hr />
@@ -104,12 +151,141 @@ export function App() {
           )}
         </div>
 
-        <div className="card" style={{ flex: 1, minWidth: 340 }}>
-          <h3 style={{ marginTop: 0 }}>Whiteboard</h3>
-          <WhiteboardCanvas roomId={roomId} send={send} incomingStroke={incoming} history={history} />
+        <div style={{ flex: 1, minWidth: 340 }}>
+          <div className="card" style={{ marginBottom: 12 }}>
+            <h3 style={{ marginTop: 0 }}>Call</h3>
+
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+              <label className="small" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input type="checkbox" checked={joinMic} onChange={(e) => setJoinMic(e.target.checked)} />
+                Start with mic
+              </label>
+
+              <label className="small" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input type="checkbox" checked={joinCam} onChange={(e) => setJoinCam(e.target.checked)} />
+                Start with camera
+              </label>
+
+              <button
+                onClick={async () => {
+                  try {
+                    await startMedia({ audio: joinMic, video: joinCam });
+                  } catch {
+                    alert("Could not access camera/mic. Check browser permissions.");
+                  }
+                }}
+                disabled={!connected}
+              >
+                Start
+              </button>
+
+              <button onClick={toggleMic} disabled={!localStream}>
+                {micEnabled ? "Mute" : "Unmute"}
+              </button>
+
+              <button onClick={toggleCam} disabled={!localStream}>
+                {camEnabled ? "Camera off" : "Camera on"}
+              </button>
+
+              <button
+                onClick={async () => {
+                  if (!localStream) return;
+                  try {
+                    if (!sharing) {
+                      await startScreenShare();
+                      setSharing(true);
+                    } else {
+                      await stopScreenShare();
+                      setSharing(false);
+                    }
+                  } catch {
+                    alert("Screen share failed.");
+                  }
+                }}
+                disabled={!localStream}
+              >
+                {sharing ? "Stop share" : "Share screen"}
+              </button>
+
+              <button
+                onClick={() => {
+                  setSharing(false);
+                  stopMedia();
+                  closeAll();
+                }}
+              >
+                Hang up
+              </button>
+            </div>
+
+            <div className="small" style={{ marginTop: 6 }}>
+              <div><b>You:</b> {userId ?? "…"}</div>
+              <div><b>Participants:</b> {1 + peers.length}</div>
+              <div style={{ marginTop: 6 }}>
+                {peers.length === 0 ? (
+                  <div>No other participants yet.</div>
+                ) : (
+                  peers.map((pid) => (
+                    <div key={pid} style={{ display: "flex", gap: 8 }}>
+                      <span>{pid}</span>
+                      <span>•</span>
+                      <span>{peerStatus[pid] ?? "new"}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <VideoGrid localStream={localStream} remoteStreams={remoteStreams} />
+          </div>
+
+          <div className="card">
+            <h3 style={{ marginTop: 0 }}>Whiteboard</h3>
+            <WhiteboardCanvas roomId={roomId} send={send} incomingStroke={incoming} history={history} />
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
+function VideoTile({ stream, label, muted }: { stream: MediaStream; label: string; muted?: boolean }) {
+  const ref = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    ref.current.srcObject = stream;
+  }, [stream]);
+
+  return (
+    <div style={{ width: 240 }}>
+      <div className="small" style={{ marginBottom: 4 }}>{label}</div>
+      <video
+        ref={ref}
+        autoPlay
+        playsInline
+        muted={!!muted}
+        style={{ width: "100%", borderRadius: 10, border: "1px solid #ddd", background: "#000" }}
+      />
+    </div>
+  );
+}
+
+function VideoGrid({
+  localStream,
+  remoteStreams
+}: {
+  localStream: MediaStream | null;
+  remoteStreams: Record<string, MediaStream>;
+}) {
+  const remoteEntries = Object.entries(remoteStreams);
+
+  return (
+    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+      {localStream ? <VideoTile stream={localStream} label="You" muted /> : <div className="small">No local media yet.</div>}
+      {remoteEntries.map(([userId, stream]) => (
+        <VideoTile key={userId} stream={stream} label={`Peer ${userId}`} />
+      ))}
+    </div>
+  );
+}

@@ -26,5 +26,12 @@ export const MsgTypes = {
     WbUndo: "wb.undo",
     WbRedo: "wb.redo",
     WbHistory: "wb.history",
+    // WebRTC signaling
+    RtcPeers: "rtc.peers",
+    RtcPeerJoined: "rtc.peer.joined",
+    RtcPeerLeft: "rtc.peer.left",
+    RtcOffer: "rtc.offer",
+    RtcAnswer: "rtc.answer",
+    RtcIce: "rtc.ice",
     CursorMove: "cursor.move"
 };
