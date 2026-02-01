@@ -1,0 +1,26 @@
+The following packages should be updated for best compatibility with the installed expo version:
+  expo@54.0.32 - expected version: ~54.0.33
+  expo-camera@16.1.11 - expected version: ~17.0.10
+  react-native-svg@15.15.1 - expected version: 15.12.1
+Your project may not work correctly until you install the expected versions of the packages.
+D:\Projects\Dream Project\inklo\node_modules\@expo\cli\build\src\utils\errors.js:130
+    throw error;
+    ^
+
+Error: ENOENT: no such file or directory, watch 'D:\Projects\Dream Project\inklo\node_modules\ws_tmp_21548'
+    at FSWatcher.<computed> (node:internal/fs/watchers:247:19)
+    at Object.watch (node:fs:2550:36)
+    at FallbackWatcher._watchdir (D:\Projects\Dream Project\inklo\node_modules\metro-file-map\src\watchers\FallbackWatcher.js:119:33)
+    at D:\Projects\Dream Project\inklo\node_modules\metro-file-map\src\watchers\FallbackWatcher.js:219:22
+    at Walker.<anonymous> (D:\Projects\Dream Project\inklo\node_modules\metro-file-map\src\watchers\FallbackWatcher.js:358:5)
+    at Walker.emit (node:events:518:28)
+    at D:\Projects\Dream Project\inklo\node_modules\walker\lib\walker.js:69:16
+    at FSReqCallback.oncomplete (node:fs:188:23) {
+  errno: -4058,
+  syscall: 'watch',
+  code: 'ENOENT',
+  path: 'D:\\Projects\\Dream Project\\inklo\\node_modules\\ws_tmp_21548',
+  filename: 'D:\\Projects\\Dream Project\\inklo\\node_modules\\ws_tmp_21548'
+}
+
+Node.js v22.14.0
