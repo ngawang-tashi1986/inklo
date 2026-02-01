@@ -1,4 +1,7 @@
 import http from "http";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { WebSocketServer, WebSocket } from "ws";
 import { nanoid } from "nanoid";
 import { EnvelopeSchema, MsgTypes, WS_VERSION, type WsEnvelope, type StrokeMsg, type WbHistoryMsg } from "@inlko/shared";
@@ -32,21 +35,82 @@ const PORT = Number(process.env.PORT ?? 8080);
 const server = http.createServer();
 const wss = new WebSocketServer({ server });
 
+// --- persistence (single-board) ---
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// This will resolve to: services/realtime/data/rooms
+const DATA_DIR = path.resolve(__dirname, "..", "data", "rooms");
+fs.mkdirSync(DATA_DIR, { recursive: true });
+
+function roomFile(roomId: string) {
+  return path.join(DATA_DIR, `${roomId}.json`);
+}
+
+// Debounced save per room
+const saveTimers = new Map<string, NodeJS.Timeout>();
+
+function scheduleSave(room: Room) {
+  const key = room.roomId;
+  const existing = saveTimers.get(key);
+  if (existing) clearTimeout(existing);
+
+  const t = setTimeout(() => {
+    saveTimers.delete(key);
+    saveRoom(room);
+  }, 250);
+
+  saveTimers.set(key, t);
+}
+
+function saveRoom(room: Room) {
+  const file = roomFile(room.roomId);
+
+  const data = {
+    roomId: room.roomId,
+    savedAt: Date.now(),
+    strokes: Array.from(room.strokes.values())
+  };
+
+  fs.writeFileSync(file, JSON.stringify(data, null, 2), "utf-8");
+}
+
+function loadRoomStrokes(roomId: string): StoredStroke[] {
+  const file = roomFile(roomId);
+  if (!fs.existsSync(file)) return [];
+
+  try {
+    const raw = fs.readFileSync(file, "utf-8");
+    const parsed = JSON.parse(raw);
+    const strokes = Array.isArray(parsed?.strokes) ? parsed.strokes : [];
+    return strokes as StoredStroke[];
+  } catch {
+    return [];
+  }
+}
+
 const rooms = new Map<string, Room>();
 const pairTokens = new Map<string, PairTokenInfo>();
 
 function getOrCreateRoom(roomId: string): Room {
   let room = rooms.get(roomId);
-  if (!room) {
-    room = {
-      roomId,
-      clients: new Set(),
-      strokes: new Map(),
-      undo: new Map(),
-      redo: new Map()
-    };
-    rooms.set(roomId, room);
+  if (room) return room;
+
+  const strokesFromDisk = loadRoomStrokes(roomId);
+  const strokes = new Map<string, StoredStroke>();
+  for (const s of strokesFromDisk) {
+    if (s?.strokeId) strokes.set(s.strokeId, s);
   }
+
+  room = {
+    roomId,
+    clients: new Set(),
+    strokes,
+    undo: new Map(),
+    redo: new Map()
+  };
+
+  rooms.set(roomId, room);
   return room;
 }
 
@@ -203,6 +267,7 @@ wss.on("connection", (socket, req) => {
         });
 
         sendHistory(room, client);
+        scheduleSave(room);
 
         return;
       }
@@ -231,6 +296,7 @@ wss.on("connection", (socket, req) => {
       });
 
       sendHistory(room, client);
+      scheduleSave(room);
 
       return;
     }
@@ -363,6 +429,7 @@ wss.on("connection", (socket, req) => {
         const outgoing = { v: WS_VERSION, type, roomId, userId: client.userId, payload: {} };
         broadcast(roomId, outgoing);
         sendHistory(room, client);
+        scheduleSave(room);
         return;
       }
 
@@ -401,6 +468,7 @@ wss.on("connection", (socket, req) => {
       };
 
       // broadcast to everyone including sender (web can choose to ignore)
+      scheduleSave(room);
       broadcast(roomId, outgoing);
       return;
     }
