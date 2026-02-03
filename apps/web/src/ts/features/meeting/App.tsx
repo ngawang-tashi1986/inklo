@@ -1,4 +1,4 @@
-?import { useMemo, useState, useRef, useEffect } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { nanoid } from "nanoid";
 import { QRCodeCanvas } from "qrcode.react";
 import { MsgTypes, WS_VERSION, type WsEnvelope } from "@inlko/shared";
@@ -6,7 +6,9 @@ import { WsClient } from "../../shared/wsClient";
 import { WhiteboardCanvas } from "../whiteboard/WhiteboardCanvas";
 import { useWebRtc } from "./useWebRtc";
 
-const REALTIME_URL = (import.meta.env.VITE_REALTIME_URL ?? "ws://localhost:8080").replace(/\/+$/, "");
+const REALTIME_URL = (
+  import.meta.env.VITE_REALTIME_URL ?? "ws://localhost:8080"
+).replace(/\/+$/, "");
 
 export function App() {
   const [roomId, setRoomId] = useState(() => nanoid(8));
@@ -16,7 +18,12 @@ export function App() {
   const [pairStatus, setPairStatus] = useState<string>("Not paired");
   const [incoming, setIncoming] = useState<any>(null);
   const [pendingPairCreate, setPendingPairCreate] = useState(false);
-  const [history, setHistory] = useState({ canUndo: false, canRedo: false, undoCount: 0, redoCount: 0 });
+  const [history, setHistory] = useState({
+    canUndo: false,
+    canRedo: false,
+    undoCount: 0,
+    redoCount: 0,
+  });
   const [peers, setPeers] = useState<string[]>([]);
   const [joinMic, setJoinMic] = useState(true);
   const [joinCam, setJoinCam] = useState(true);
@@ -71,15 +78,20 @@ export function App() {
             send(MsgTypes.PairCreate, {}, roomId);
           }
         }
-      }
+      },
     });
-    const send = <T,>(type: string, payload: T, roomId?: string, requestId?: string) => {
+    const send = <T,>(
+      type: string,
+      payload: T,
+      roomId?: string,
+      requestId?: string,
+    ) => {
       const env: WsEnvelope<T> = {
         v: WS_VERSION,
         type,
         roomId,
         requestId,
-        payload
+        payload,
       };
       c.send(env);
     };
@@ -109,7 +121,7 @@ export function App() {
     handlePeerJoined,
     handlePeerLeft,
     handleSignal,
-    closeAll
+    closeAll,
   } = useWebRtc({ roomId, localUserId: userId, send });
 
   function joinRoom() {
@@ -137,8 +149,14 @@ export function App() {
       <div className="row">
         <div className="card" style={{ minWidth: 320 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input value={roomId} onChange={(e) => setRoomId(e.target.value)} placeholder="Room ID" />
-            <button onClick={joinRoom}>{connected ? "Join room" : "Connecting..."}</button>
+            <input
+              value={roomId}
+              onChange={(e) => setRoomId(e.target.value)}
+              placeholder="Room ID"
+            />
+            <button onClick={joinRoom}>
+              {connected ? "Join room" : "Connecting..."}
+            </button>
           </div>
 
           <div className="small" style={{ marginTop: 8 }}>
@@ -158,7 +176,14 @@ export function App() {
           {pairToken && (
             <div style={{ marginTop: 12 }}>
               <div className="small">Scan this QR in the mobile app:</div>
-              <div style={{ background: "white", padding: 8, display: "inline-block", borderRadius: 8 }}>
+              <div
+                style={{
+                  background: "white",
+                  padding: 8,
+                  display: "inline-block",
+                  borderRadius: 8,
+                }}
+              >
                 <QRCodeCanvas value={qrValue} size={220} />
               </div>
               <div className="small" style={{ marginTop: 8 }}>
@@ -172,14 +197,36 @@ export function App() {
           <div className="card" style={{ marginBottom: 12 }}>
             <h3 style={{ marginTop: 0 }}>Call</h3>
 
-            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
-              <label className="small" style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <input type="checkbox" checked={joinMic} onChange={(e) => setJoinMic(e.target.checked)} />
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                alignItems: "center",
+                flexWrap: "wrap",
+                marginBottom: 10,
+              }}
+            >
+              <label
+                className="small"
+                style={{ display: "flex", gap: 6, alignItems: "center" }}
+              >
+                <input
+                  type="checkbox"
+                  checked={joinMic}
+                  onChange={(e) => setJoinMic(e.target.checked)}
+                />
                 Start with mic
               </label>
 
-              <label className="small" style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <input type="checkbox" checked={joinCam} onChange={(e) => setJoinCam(e.target.checked)} />
+              <label
+                className="small"
+                style={{ display: "flex", gap: 6, alignItems: "center" }}
+              >
+                <input
+                  type="checkbox"
+                  checked={joinCam}
+                  onChange={(e) => setJoinCam(e.target.checked)}
+                />
                 Start with camera
               </label>
 
@@ -192,15 +239,20 @@ export function App() {
                     const name = err?.name ?? "";
                     const msg = err?.message ?? "";
 
-                    if (name === "NotReadableError" || /device.*in use/i.test(msg)) {
+                    if (
+                      name === "NotReadableError" ||
+                      /device.*in use/i.test(msg)
+                    ) {
                       alert(
-                        "Camera/mic is already in use by another tab/app. Close the other tab or start this tab with camera/mic off."
+                        "Camera/mic is already in use by another tab/app. Close the other tab or start this tab with camera/mic off.",
                       );
                       return;
                     }
 
                     if (name === "NotAllowedError") {
-                      alert("Permission denied. Allow camera/mic access in the browser prompt.");
+                      alert(
+                        "Permission denied. Allow camera/mic access in the browser prompt.",
+                      );
                       return;
                     }
 
@@ -252,8 +304,12 @@ export function App() {
             </div>
 
             <div className="small" style={{ marginTop: 6 }}>
-              <div><b>You:</b> {userId ?? "?"}</div>
-              <div><b>Participants:</b> {1 + peers.length}</div>
+              <div>
+                <b>You:</b> {userId ?? "?"}
+              </div>
+              <div>
+                <b>Participants:</b> {1 + peers.length}
+              </div>
               <div style={{ marginTop: 6 }}>
                 {peers.length === 0 ? (
                   <div>No other participants yet.</div>
@@ -269,12 +325,20 @@ export function App() {
               </div>
             </div>
 
-            <VideoGrid localStream={localStream} remoteStreams={remoteStreams} />
+            <VideoGrid
+              localStream={localStream}
+              remoteStreams={remoteStreams}
+            />
           </div>
 
           <div className="card">
             <h3 style={{ marginTop: 0 }}>Whiteboard</h3>
-            <WhiteboardCanvas roomId={roomId} send={send} incomingStroke={incoming} history={history} />
+            <WhiteboardCanvas
+              roomId={roomId}
+              send={send}
+              incomingStroke={incoming}
+              history={history}
+            />
           </div>
         </div>
       </div>
@@ -282,7 +346,15 @@ export function App() {
   );
 }
 
-function VideoTile({ stream, label, muted }: { stream: MediaStream; label: string; muted?: boolean }) {
+function VideoTile({
+  stream,
+  label,
+  muted,
+}: {
+  stream: MediaStream;
+  label: string;
+  muted?: boolean;
+}) {
   const ref = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
@@ -292,13 +364,20 @@ function VideoTile({ stream, label, muted }: { stream: MediaStream; label: strin
 
   return (
     <div style={{ width: 240 }}>
-      <div className="small" style={{ marginBottom: 4 }}>{label}</div>
+      <div className="small" style={{ marginBottom: 4 }}>
+        {label}
+      </div>
       <video
         ref={ref}
         autoPlay
         playsInline
         muted={!!muted}
-        style={{ width: "100%", borderRadius: 10, border: "1px solid #ddd", background: "#000" }}
+        style={{
+          width: "100%",
+          borderRadius: 10,
+          border: "1px solid #ddd",
+          background: "#000",
+        }}
       />
     </div>
   );
@@ -306,7 +385,7 @@ function VideoTile({ stream, label, muted }: { stream: MediaStream; label: strin
 
 function VideoGrid({
   localStream,
-  remoteStreams
+  remoteStreams,
 }: {
   localStream: MediaStream | null;
   remoteStreams: Record<string, MediaStream>;
@@ -315,11 +394,14 @@ function VideoGrid({
 
   return (
     <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-      {localStream ? <VideoTile stream={localStream} label="You" muted /> : <div className="small">No local media yet.</div>}
+      {localStream ? (
+        <VideoTile stream={localStream} label="You" muted />
+      ) : (
+        <div className="small">No local media yet.</div>
+      )}
       {remoteEntries.map(([userId, stream]) => (
         <VideoTile key={userId} stream={stream} label={`Peer ${userId}`} />
       ))}
     </div>
   );
 }
-
