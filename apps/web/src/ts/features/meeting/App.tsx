@@ -8,10 +8,9 @@ import { useWebRtc } from "./useWebRtc";
 
 const REALTIME_URL =
   /*import.meta.env.VITE_REALTIME_URL ?? "ws://localhost:8080"*/
-  (import.meta.env.VITE_REALTIME_URL ?? "ws://inklo.onrender.com/").replace(
-    /\/+$/,
-    "",
-  );
+  (
+    import.meta.env.VITE_REALTIME_URL ?? "ws://https://inklo.onrender.com/"
+  ).replace(/\/+$/, "");
 
 export function App() {
   const [roomId, setRoomId] = useState(() => nanoid(8));
