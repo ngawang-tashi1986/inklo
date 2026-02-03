@@ -1,33 +1,92 @@
-import { WS_VERSION, MsgTypes, type WsEnvelope } from "@inlko/shared";
-
-export type WsHandlers = {
+type WsClientOpts = {
+  url: string;
   onMessage: (msg: any) => void;
-  onOpen?: () => void;
-  onClose?: () => void;
+  onStatus?: (status: "connecting" | "open" | "closed") => void;
 };
 
-export function createWs(url: string, handlers: WsHandlers) {
-  const ws = new WebSocket(url);
+export class WsClient {
+  private ws: WebSocket | null = null;
+  private opts: WsClientOpts;
+  private reconnectTimer: number | null = null;
+  private shouldReconnect = true;
+  private backoffMs = 250;
 
-  ws.onopen = () => handlers.onOpen?.();
-  ws.onclose = () => handlers.onClose?.();
-  ws.onmessage = (ev) => {
-    try {
-      const msg = JSON.parse(ev.data);
-      handlers.onMessage(msg);
-    } catch {}
-  };
-
-  function send<T>(type: string, payload: T, roomId?: string, requestId?: string) {
-    const env: WsEnvelope<T> = {
-      v: WS_VERSION,
-      type,
-      roomId,
-      requestId,
-      payload
-    };
-    ws.send(JSON.stringify(env));
+  constructor(opts: WsClientOpts) {
+    this.opts = opts;
   }
 
-  return { ws, send };
+  connect() {
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    this.opts.onStatus?.("connecting");
+
+    try {
+      this.ws = new WebSocket(this.opts.url);
+    } catch {
+      this.scheduleReconnect();
+      return;
+    }
+
+    this.ws.onopen = () => {
+      this.backoffMs = 250;
+      this.opts.onStatus?.("open");
+    };
+
+    this.ws.onmessage = (ev) => {
+      try {
+        this.opts.onMessage(JSON.parse(ev.data));
+      } catch {
+        // ignore invalid messages
+      }
+    };
+
+    this.ws.onerror = () => {
+      // errors are followed by close in most browsers
+    };
+
+    this.ws.onclose = (ev) => {
+      this.opts.onStatus?.("closed");
+      // Helpful logging:
+      console.warn("WS closed", { code: ev.code, reason: ev.reason, wasClean: ev.wasClean });
+
+      this.ws = null;
+      if (this.shouldReconnect) this.scheduleReconnect();
+    };
+  }
+
+  private scheduleReconnect() {
+    if (this.reconnectTimer != null) return;
+
+    const wait = this.backoffMs;
+    this.backoffMs = Math.min(this.backoffMs * 2, 5000);
+
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect();
+    }, wait);
+  }
+
+  send(msg: any) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      // don’t spam console; just drop if not connected
+      return false;
+    }
+    this.ws.send(JSON.stringify(msg));
+    return true;
+  }
+
+  close() {
+    this.shouldReconnect = false;
+    if (this.reconnectTimer != null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    try {
+      this.ws?.close();
+    } catch {}
+    this.ws = null;
+    this.opts.onStatus?.("closed");
+  }
 }

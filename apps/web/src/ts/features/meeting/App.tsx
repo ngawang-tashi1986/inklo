@@ -1,12 +1,12 @@
-import React, { useMemo, useState, useRef, useEffect } from "react";
+?import { useMemo, useState, useRef, useEffect } from "react";
 import { nanoid } from "nanoid";
 import { QRCodeCanvas } from "qrcode.react";
-import { MsgTypes } from "@inlko/shared";
-import { createWs } from "../../shared/wsClient";
+import { MsgTypes, WS_VERSION, type WsEnvelope } from "@inlko/shared";
+import { WsClient } from "../../shared/wsClient";
 import { WhiteboardCanvas } from "../whiteboard/WhiteboardCanvas";
 import { useWebRtc } from "./useWebRtc";
 
-const REALTIME_URL = "ws://localhost:8080";
+const REALTIME_URL = (import.meta.env.VITE_REALTIME_URL ?? "ws://localhost:8080").replace(/\/+$/, "");
 
 export function App() {
   const [roomId, setRoomId] = useState(() => nanoid(8));
@@ -22,10 +22,10 @@ export function App() {
   const [joinCam, setJoinCam] = useState(true);
   const [sharing, setSharing] = useState(false);
 
-  const { send } = useMemo(() => {
-    const c = createWs(`${REALTIME_URL}?role=web`, {
-      onOpen: () => setConnected(true),
-      onClose: () => setConnected(false),
+  const { send, wsClient } = useMemo(() => {
+    const c = new WsClient({
+      url: `${REALTIME_URL}?role=web`,
+      onStatus: (status) => setConnected(status === "open"),
       onMessage: (msg) => {
         if (msg?.type === "hello") setUserId(msg?.payload?.userId);
 
@@ -73,8 +73,25 @@ export function App() {
         }
       }
     });
-    return c;
+    const send = <T,>(type: string, payload: T, roomId?: string, requestId?: string) => {
+      const env: WsEnvelope<T> = {
+        v: WS_VERSION,
+        type,
+        roomId,
+        requestId,
+        payload
+      };
+      c.send(env);
+    };
+    return { send, wsClient: c };
   }, [roomId, pendingPairCreate]);
+
+  useEffect(() => {
+    wsClient.connect();
+    return () => {
+      wsClient.close();
+    };
+  }, [wsClient]);
 
   const {
     localStream,
@@ -115,7 +132,7 @@ export function App() {
 
   return (
     <div className="container">
-      <h2>inlko (MVP) — Web Whiteboard + Mobile Companion</h2>
+      <h2>inlko (MVP) ? Web Whiteboard + Mobile Companion</h2>
 
       <div className="row">
         <div className="card" style={{ minWidth: 320 }}>
@@ -125,7 +142,7 @@ export function App() {
           </div>
 
           <div className="small" style={{ marginTop: 8 }}>
-            Web userId: {userId ?? "…"}
+            Web userId: {userId ?? "?"}
           </div>
 
           <hr />
@@ -170,8 +187,24 @@ export function App() {
                 onClick={async () => {
                   try {
                     await startMedia({ audio: joinMic, video: joinCam });
-                  } catch {
-                    alert("Could not access camera/mic. Check browser permissions.");
+                  } catch (err: any) {
+                    console.error("startMedia failed", err);
+                    const name = err?.name ?? "";
+                    const msg = err?.message ?? "";
+
+                    if (name === "NotReadableError" || /device.*in use/i.test(msg)) {
+                      alert(
+                        "Camera/mic is already in use by another tab/app. Close the other tab or start this tab with camera/mic off."
+                      );
+                      return;
+                    }
+
+                    if (name === "NotAllowedError") {
+                      alert("Permission denied. Allow camera/mic access in the browser prompt.");
+                      return;
+                    }
+
+                    alert(`Could not start media: ${name} ${msg}`);
                   }
                 }}
                 disabled={!connected}
@@ -219,7 +252,7 @@ export function App() {
             </div>
 
             <div className="small" style={{ marginTop: 6 }}>
-              <div><b>You:</b> {userId ?? "…"}</div>
+              <div><b>You:</b> {userId ?? "?"}</div>
               <div><b>Participants:</b> {1 + peers.length}</div>
               <div style={{ marginTop: 6 }}>
                 {peers.length === 0 ? (
@@ -228,7 +261,7 @@ export function App() {
                   peers.map((pid) => (
                     <div key={pid} style={{ display: "flex", gap: 8 }}>
                       <span>{pid}</span>
-                      <span>•</span>
+                      <span>?</span>
                       <span>{peerStatus[pid] ?? "new"}</span>
                     </div>
                   ))
@@ -289,3 +322,4 @@ function VideoGrid({
     </div>
   );
 }
+

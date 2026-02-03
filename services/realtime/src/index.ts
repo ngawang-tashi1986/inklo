@@ -240,6 +240,15 @@ wss.on("connection", (socket, req) => {
       const room = getOrCreateRoom(roomId);
       room.clients.add(client);
 
+      safeSend(socket, {
+        v: WS_VERSION,
+        type: MsgTypes.JoinedRoom,
+        requestId,
+        roomId,
+        userId: client.userId,
+        payload: { ok: true }
+      });
+
       // 1) Send current peers to the newly joined client
       safeSend(socket, {
         v: WS_VERSION,
@@ -259,15 +268,6 @@ wss.on("connection", (socket, req) => {
         },
         socket
       );
-
-      safeSend(socket, {
-        v: WS_VERSION,
-        type: MsgTypes.JoinedRoom,
-        requestId,
-        roomId,
-        userId: client.userId,
-        payload: { ok: true }
-      });
 
       // Send snapshot to the newly joined client
       const snapshot = {
@@ -566,6 +566,6 @@ wss.on("connection", (socket, req) => {
   safeSend(socket, { v: WS_VERSION, type: "hello", payload: { userId: client.userId, role } });
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`[inlko realtime] ws://localhost:${PORT}`);
 });

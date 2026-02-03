@@ -164,7 +164,6 @@ export function useWebRtc({ roomId, localUserId, send }: UseWebRtcArgs) {
   );
 
   const startScreenShare = useCallback(async () => {
-    // @ts-expect-error - TS sometimes needs lib.dom adjustments
     const displayStream: MediaStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
     const track = displayStream.getVideoTracks()[0];
     if (!track) return;
@@ -337,3 +336,4 @@ export function useWebRtc({ roomId, localUserId, send }: UseWebRtcArgs) {
     closeAll
   };
 }
+
