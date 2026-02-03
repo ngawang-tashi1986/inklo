@@ -32,7 +32,10 @@ type PairTokenInfo = {
 };
 
 const PORT = Number(process.env.PORT ?? 8080);
-const server = http.createServer();
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("ok");
+});
 const wss = new WebSocketServer({ server });
 
 // --- persistence (single-board) ---
