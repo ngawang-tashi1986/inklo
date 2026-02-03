@@ -7,7 +7,7 @@ import { WhiteboardCanvas } from "../whiteboard/WhiteboardCanvas";
 import { useWebRtc } from "./useWebRtc";
 
 const REALTIME_URL = (
-  import.meta.env.VITE_REALTIME_URL ?? "ws://localhost:8080"
+  import.meta.env.VITE_REALTIME_URL ?? "ws://localhost:10000"
 ).replace(/\/+$/, "");
 
 export function App() {
