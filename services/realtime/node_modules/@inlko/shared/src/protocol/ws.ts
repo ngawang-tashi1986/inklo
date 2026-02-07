@@ -73,6 +73,22 @@ export type RtcIceMsg = {
 
 export type PairCreated = { pairToken: string; expiresAt: number };
 export type PairClaim = { pairToken: string };
+export type ChatMessagePayload = {
+  id: string;
+  userId: string;
+  name?: string;
+  text: string;
+  ts: number;
+  clientId?: string;
+};
+export type ChatSendPayload = {
+  text: string;
+  name?: string;
+  clientId?: string;
+};
+export type ChatHistoryPayload = {
+  messages: ChatMessagePayload[];
+};
 
 export const MsgTypes = {
   JoinRoom: "room.join",
@@ -105,5 +121,9 @@ export const MsgTypes = {
   RtcAnswer: "rtc.answer",
   RtcIce: "rtc.ice",
 
-  CursorMove: "cursor.move"
+  CursorMove: "cursor.move",
+
+  ChatMessage: "chat.message",
+  ChatHistory: "chat.history",
+  ChatHistoryRequest: "chat.history.request"
 } as const;

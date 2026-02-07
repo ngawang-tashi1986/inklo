@@ -1,3 +1,5 @@
+import { logEvent } from "./logger";
+
 type WsClientOpts = {
   url: string;
   onMessage: (msg: any) => void;
@@ -21,10 +23,12 @@ export class WsClient {
     }
 
     this.opts.onStatus?.("connecting");
+    logEvent("info", "ws connect", { url: this.opts.url });
 
     try {
       this.ws = new WebSocket(this.opts.url);
     } catch {
+      logEvent("error", "ws new failed", { url: this.opts.url });
       this.scheduleReconnect();
       return;
     }
@@ -32,6 +36,7 @@ export class WsClient {
     this.ws.onopen = () => {
       this.backoffMs = 250;
       this.opts.onStatus?.("open");
+      logEvent("info", "ws open", { url: this.opts.url });
     };
 
     this.ws.onmessage = (ev) => {
@@ -44,12 +49,19 @@ export class WsClient {
 
     this.ws.onerror = () => {
       // errors are followed by close in most browsers
+      logEvent("error", "ws error", { url: this.opts.url });
     };
 
     this.ws.onclose = (ev) => {
       this.opts.onStatus?.("closed");
       // Helpful logging:
       console.warn("WS closed", { code: ev.code, reason: ev.reason, wasClean: ev.wasClean });
+      logEvent("warn", "ws closed", {
+        url: this.opts.url,
+        code: ev.code,
+        reason: ev.reason,
+        wasClean: ev.wasClean
+      });
 
       this.ws = null;
       if (this.shouldReconnect) this.scheduleReconnect();
@@ -70,7 +82,7 @@ export class WsClient {
 
   send(msg: any) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      // don’t spam console; just drop if not connected
+      // don't spam console; just drop if not connected
       return false;
     }
     this.ws.send(JSON.stringify(msg));
@@ -88,5 +100,6 @@ export class WsClient {
     } catch {}
     this.ws = null;
     this.opts.onStatus?.("closed");
+    logEvent("info", "ws close called", { url: this.opts.url });
   }
 }

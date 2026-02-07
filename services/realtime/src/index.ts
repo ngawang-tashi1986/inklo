@@ -4,7 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { WebSocketServer, WebSocket } from "ws";
 import { nanoid } from "nanoid";
-import { EnvelopeSchema, MsgTypes, WS_VERSION, type WsEnvelope, type StrokeMsg, type WbHistoryMsg } from "@inlko/shared";
+import { EnvelopeSchema, MsgTypes, WS_VERSION, type WsEnvelope, type StrokeMsg, type WbHistoryMsg, type ChatMessagePayload, type ChatSendPayload, type ChatHistoryPayload } from "@inlko/shared";
 
 type ClientMeta = {
   socket: WebSocket;
@@ -22,6 +22,7 @@ type Room = {
   strokes: Map<string, StoredStroke>;
   undo: Map<string, string[]>;
   redo: Map<string, StoredStroke[]>;
+  chat: ChatMessagePayload[];
 };
 
 type PairTokenInfo = {
@@ -32,15 +33,87 @@ type PairTokenInfo = {
 };
 
 const PORT = Number(process.env.PORT ?? 8080);
+
+// --- logging ---
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const LOG_DIR = path.resolve(__dirname, "..", "..", "..", "logs");
+const DEBUG_LOGS = process.env.REALTIME_DEBUG_LOGS === "true";
+if (DEBUG_LOGS) fs.mkdirSync(LOG_DIR, { recursive: true });
+
+function appendLog(app: string, level: "info" | "warn" | "error", msg: string, data?: unknown) {
+  if (!DEBUG_LOGS) return;
+  const line = JSON.stringify({
+    ts: new Date().toISOString(),
+    app,
+    level,
+    msg,
+    data
+  }) + "\n";
+
+  try {
+    fs.appendFileSync(path.join(LOG_DIR, `${app}.log`), line, "utf-8");
+  } catch {}
+
+  if (level === "error") console.error(`[${app}] ${msg}`, data ?? "");
+  else if (level === "warn") console.warn(`[${app}] ${msg}`, data ?? "");
+  else console.log(`[${app}] ${msg}`, data ?? "");
+}
+
+function toJson(res: http.ServerResponse, status: number, body: unknown) {
+  res.writeHead(status, {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type"
+  });
+  res.end(JSON.stringify(body));
+}
+
 const server = http.createServer((req, res) => {
-  res.writeHead(200, { "Content-Type": "text/plain" });
+  const url = new URL(req.url ?? "/", "http://localhost");
+
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type"
+    });
+    res.end();
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/log") {
+    let raw = "";
+    req.on("data", (chunk) => {
+      raw += chunk.toString();
+      if (raw.length > 64 * 1024) req.destroy();
+    });
+    req.on("end", () => {
+      try {
+        const payload = JSON.parse(raw || "{}");
+        const app = String(payload?.app ?? "unknown");
+        const level = (payload?.level === "warn" || payload?.level === "error") ? payload.level : "info";
+        const msg = String(payload?.msg ?? "log");
+        const data = payload?.data ?? null;
+        appendLog(app, level, msg, data);
+        toJson(res, 200, { ok: true });
+      } catch {
+        toJson(res, 400, { ok: false });
+      }
+    });
+    return;
+  }
+
+  res.writeHead(200, {
+    "Content-Type": "text/plain",
+    "Access-Control-Allow-Origin": "*"
+  });
   res.end("ok");
 });
 const wss = new WebSocketServer({ server });
 
 // --- persistence (single-board) ---
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // This will resolve to: services/realtime/data/rooms
 const DATA_DIR = path.resolve(__dirname, "..", "data", "rooms");
@@ -110,7 +183,8 @@ function getOrCreateRoom(roomId: string): Room {
     clients: new Set(),
     strokes,
     undo: new Map(),
-    redo: new Map()
+    redo: new Map(),
+    chat: []
   };
 
   rooms.set(roomId, room);
@@ -159,6 +233,19 @@ function sendHistory(room: Room, client: ClientMeta) {
   });
 }
 
+function sendChatHistory(room: Room, client: ClientMeta) {
+  const payload: ChatHistoryPayload = {
+    messages: room.chat.slice(-100)
+  };
+  safeSend(client.socket, {
+    v: WS_VERSION,
+    type: MsgTypes.ChatHistory,
+    roomId: room.roomId,
+    userId: client.userId,
+    payload
+  });
+}
+
 function broadcast(roomId: string, msg: unknown, except?: WebSocket) {
   const room = rooms.get(roomId);
   if (!room) return;
@@ -195,12 +282,21 @@ wss.on("connection", (socket, req) => {
   const url = new URL(req.url ?? "/", "http://localhost");
   const roleParam = url.searchParams.get("role");
   const role: ClientMeta["role"] = roleParam === "mobile" ? "mobile" : "web";
+  const remote = `${req.socket.remoteAddress ?? "unknown"}:${req.socket.remotePort ?? "?"}`;
 
   const client: ClientMeta = {
     socket,
     userId: nanoid(10),
     role
   };
+
+  appendLog("realtime", "info", "ws connected", {
+    userId: client.userId,
+    role,
+    remote,
+    path: url.pathname,
+    query: url.search
+  });
 
   socket.on("message", (raw) => {
     let parsed: unknown;
@@ -215,11 +311,22 @@ wss.on("connection", (socket, req) => {
 
     const env = envRes.data as WsEnvelope<any>;
     const { type, payload, requestId } = env;
+    appendLog("realtime", "info", "message", {
+      type,
+      roomId: env.roomId ?? null,
+      userId: env.userId ?? null
+    });
 
     // room.join
     if (type === MsgTypes.JoinRoom) {
       const roomId = String(payload?.roomId ?? "");
       if (!roomId) return;
+
+      appendLog("realtime", "info", "join room", {
+        userId: client.userId,
+        role: client.role,
+        roomId
+      });
 
       // move client between rooms if needed
       if (client.roomId) {
@@ -283,6 +390,7 @@ wss.on("connection", (socket, req) => {
       };
       safeSend(socket, snapshot);
       sendHistory(room, client);
+      sendChatHistory(room, client);
 
       return;
     }
@@ -545,9 +653,47 @@ wss.on("connection", (socket, req) => {
       broadcast(roomId, outgoing);
       return;
     }
+
+    if (type === MsgTypes.ChatHistoryRequest) {
+      const room = rooms.get(roomId);
+      if (!room) return;
+      sendChatHistory(room, client);
+      return;
+    }
+
+    if (type === MsgTypes.ChatMessage) {
+      const room = rooms.get(roomId);
+      if (!room) return;
+
+      const incoming = payload as ChatSendPayload;
+      const text = String(incoming?.text ?? "").trim();
+      if (!text) return;
+
+      const msg: ChatMessagePayload = {
+        id: nanoid(12),
+        userId: client.userId,
+        name: typeof incoming?.name === "string" ? incoming.name : undefined,
+        text,
+        ts: Date.now(),
+        clientId: typeof incoming?.clientId === "string" ? incoming.clientId : undefined
+      };
+
+      room.chat.push(msg);
+      if (room.chat.length > 200) room.chat.splice(0, room.chat.length - 200);
+
+      broadcast(roomId, {
+        v: WS_VERSION,
+        type: MsgTypes.ChatMessage,
+        roomId,
+        userId: client.userId,
+        payload: msg
+      });
+
+      return;
+    }
   });
 
-  socket.on("close", () => {
+  socket.on("close", (code, reason) => {
     if (client.roomId) {
       const room = rooms.get(client.roomId);
       if (room) {
@@ -563,6 +709,25 @@ wss.on("connection", (socket, req) => {
         if (room.clients.size === 0) rooms.delete(room.roomId);
       }
     }
+
+    appendLog("realtime", "warn", "ws closed", {
+      userId: client.userId,
+      roomId: client.roomId ?? null,
+      role: client.role,
+      remote,
+      code,
+      reason: reason?.toString?.() ?? ""
+    });
+  });
+
+  socket.on("error", (err) => {
+    appendLog("realtime", "error", "ws error", {
+      userId: client.userId,
+      roomId: client.roomId ?? null,
+      role: client.role,
+      remote,
+      message: err?.message
+    });
   });
 
   // small hello (optional)
@@ -570,5 +735,5 @@ wss.on("connection", (socket, req) => {
 });
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`[inlko realtime] ws://localhost:${PORT}`);
+  appendLog("realtime", "info", "listening", { url: `ws://localhost:${PORT}` });
 });
