@@ -3,7 +3,6 @@ import { nanoid } from "nanoid";
 import { QRCodeCanvas } from "qrcode.react";
 import { MsgTypes, WS_VERSION, type WsEnvelope, type ChatMessagePayload } from "@inlko/shared";
 import { WsClient } from "../../shared/wsClient";
-import { logEvent } from "../../shared/logger";
 import { WhiteboardCanvas } from "../whiteboard/WhiteboardCanvas";
 import { useWebRtc } from "./useWebRtc";
 
@@ -52,7 +51,6 @@ export function App() {
   const pendingChatIdsRef = useRef(new Set<string>());
   const roomIdRef = useRef(roomId);
   const viewRef = useRef(view);
-  const skipFirstCleanupRef = useRef(true);
   const handleMessageRef = useRef<(msg: WsEnvelope<unknown>) => void>(() => {});
   const wsClientRef = useRef<WsClient | null>(null);
   const autoStartMediaRef = useRef(false);
@@ -159,14 +157,8 @@ export function App() {
     (status: "connecting" | "open" | "closed") => {
       const isOpen = status === "open";
       setConnected(isOpen);
-      logEvent("info", "ws status", {
-        status,
-        view: viewRef.current,
-        roomId: roomIdRef.current
-      });
       if (isOpen && viewRef.current === "meeting") {
         const currentRoomId = roomIdRef.current;
-        logEvent("info", "join room send", { roomId: currentRoomId });
         wsClientRef.current?.send({
           v: WS_VERSION,
           type: MsgTypes.JoinRoom,
@@ -180,14 +172,13 @@ export function App() {
     []
   );
 
-  const wsClient = useMemo(() => {
-    const client = new WsClient({
+  useEffect(() => {
+    if (wsClientRef.current) return;
+    wsClientRef.current = new WsClient({
       url: `${REALTIME_URL}?role=web`,
       onStatus: handleStatus,
       onMessage: (msg) => handleMessageRef.current(msg)
     });
-    wsClientRef.current = client;
-    return client;
   }, [handleStatus]);
 
   const send = useCallback(
@@ -199,9 +190,9 @@ export function App() {
         requestId,
         payload,
       };
-      return wsClient.send(env);
+      return wsClientRef.current?.send(env) ?? false;
     },
-    [wsClient],
+    [],
   );
 
   const {
@@ -221,17 +212,11 @@ export function App() {
 
   useEffect(() => {
     if (view !== "meeting") return;
-    logEvent("info", "meeting view connect");
-    wsClient.connect();
+    wsClientRef.current?.connect();
     return () => {
-      logEvent("info", "meeting view cleanup");
-      if (import.meta.env.DEV && skipFirstCleanupRef.current) {
-        skipFirstCleanupRef.current = false;
-        return;
-      }
-      wsClient.close();
+      wsClientRef.current?.close();
     };
-  }, [view, wsClient]);
+  }, [view]);
 
   useEffect(() => {
     if (view !== "meeting") return;
@@ -308,7 +293,6 @@ export function App() {
     setShowStartModal(false);
     autoStartMediaRef.current = true;
     autoStartDoneRef.current = false;
-    logEvent("info", "confirm start", { roomId: nextRoomId, action: startAction });
   }
 
   if (view === "home") {

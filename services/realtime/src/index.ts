@@ -34,86 +34,15 @@ type PairTokenInfo = {
 
 const PORT = Number(process.env.PORT ?? 8080);
 
-// --- logging ---
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const LOG_DIR = path.resolve(__dirname, "..", "..", "..", "logs");
-const DEBUG_LOGS = process.env.REALTIME_DEBUG_LOGS === "true";
-if (DEBUG_LOGS) fs.mkdirSync(LOG_DIR, { recursive: true });
-
-function appendLog(app: string, level: "info" | "warn" | "error", msg: string, data?: unknown) {
-  if (!DEBUG_LOGS) return;
-  const line = JSON.stringify({
-    ts: new Date().toISOString(),
-    app,
-    level,
-    msg,
-    data
-  }) + "\n";
-
-  try {
-    fs.appendFileSync(path.join(LOG_DIR, `${app}.log`), line, "utf-8");
-  } catch {}
-
-  if (level === "error") console.error(`[${app}] ${msg}`, data ?? "");
-  else if (level === "warn") console.warn(`[${app}] ${msg}`, data ?? "");
-  else console.log(`[${app}] ${msg}`, data ?? "");
-}
-
-function toJson(res: http.ServerResponse, status: number, body: unknown) {
-  res.writeHead(status, {
-    "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type"
-  });
-  res.end(JSON.stringify(body));
-}
-
 const server = http.createServer((req, res) => {
-  const url = new URL(req.url ?? "/", "http://localhost");
-
-  if (req.method === "OPTIONS") {
-    res.writeHead(204, {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type"
-    });
-    res.end();
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/log") {
-    let raw = "";
-    req.on("data", (chunk) => {
-      raw += chunk.toString();
-      if (raw.length > 64 * 1024) req.destroy();
-    });
-    req.on("end", () => {
-      try {
-        const payload = JSON.parse(raw || "{}");
-        const app = String(payload?.app ?? "unknown");
-        const level = (payload?.level === "warn" || payload?.level === "error") ? payload.level : "info";
-        const msg = String(payload?.msg ?? "log");
-        const data = payload?.data ?? null;
-        appendLog(app, level, msg, data);
-        toJson(res, 200, { ok: true });
-      } catch {
-        toJson(res, 400, { ok: false });
-      }
-    });
-    return;
-  }
-
-  res.writeHead(200, {
-    "Content-Type": "text/plain",
-    "Access-Control-Allow-Origin": "*"
-  });
+  res.writeHead(200, { "Content-Type": "text/plain" });
   res.end("ok");
 });
 const wss = new WebSocketServer({ server });
 
 // --- persistence (single-board) ---
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // This will resolve to: services/realtime/data/rooms
 const DATA_DIR = path.resolve(__dirname, "..", "data", "rooms");
@@ -290,14 +219,6 @@ wss.on("connection", (socket, req) => {
     role
   };
 
-  appendLog("realtime", "info", "ws connected", {
-    userId: client.userId,
-    role,
-    remote,
-    path: url.pathname,
-    query: url.search
-  });
-
   socket.on("message", (raw) => {
     let parsed: unknown;
     try {
@@ -311,22 +232,10 @@ wss.on("connection", (socket, req) => {
 
     const env = envRes.data as WsEnvelope<any>;
     const { type, payload, requestId } = env;
-    appendLog("realtime", "info", "message", {
-      type,
-      roomId: env.roomId ?? null,
-      userId: env.userId ?? null
-    });
-
     // room.join
     if (type === MsgTypes.JoinRoom) {
       const roomId = String(payload?.roomId ?? "");
       if (!roomId) return;
-
-      appendLog("realtime", "info", "join room", {
-        userId: client.userId,
-        role: client.role,
-        roomId
-      });
 
       // move client between rooms if needed
       if (client.roomId) {
@@ -710,24 +619,10 @@ wss.on("connection", (socket, req) => {
       }
     }
 
-    appendLog("realtime", "warn", "ws closed", {
-      userId: client.userId,
-      roomId: client.roomId ?? null,
-      role: client.role,
-      remote,
-      code,
-      reason: reason?.toString?.() ?? ""
-    });
   });
 
   socket.on("error", (err) => {
-    appendLog("realtime", "error", "ws error", {
-      userId: client.userId,
-      roomId: client.roomId ?? null,
-      role: client.role,
-      remote,
-      message: err?.message
-    });
+    console.error("[realtime] ws error", err);
   });
 
   // small hello (optional)
@@ -735,5 +630,5 @@ wss.on("connection", (socket, req) => {
 });
 
 server.listen(PORT, "0.0.0.0", () => {
-  appendLog("realtime", "info", "listening", { url: `ws://localhost:${PORT}` });
+  console.log(`[inlko realtime] ws://localhost:${PORT}`);
 });

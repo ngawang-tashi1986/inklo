@@ -7,20 +7,6 @@ import Svg, { Polyline } from "react-native-svg";
 import { MsgTypes, WS_VERSION, type Point, type StrokeMsg } from "@inlko/shared";
 
 const REALTIME_URL = process.env.EXPO_PUBLIC_REALTIME_URL ?? "ws://172.20.10.3:8080";
-const DEBUG_LOGS = process.env.EXPO_PUBLIC_DEBUG_LOGS === "true";
-const LOG_ENDPOINT = REALTIME_URL.replace(/^ws(s?):\/\//, "http$1://") + "/log";
-
-function logEvent(level: "info" | "warn" | "error", msg: string, data?: unknown) {
-  if (!DEBUG_LOGS) return;
-  const payload = { app: "mobile", level, msg, data };
-  try {
-    fetch(LOG_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    }).catch(() => {});
-  } catch {}
-}
 
 type Screen = "scan" | "draw";
 
@@ -50,13 +36,8 @@ export default function App() {
   }, [permission, requestPermission]);
 
   useEffect(() => {
-    logEvent("info", "ws connect", { url: `${REALTIME_URL}?role=mobile` });
     const ws = new WebSocket(`${REALTIME_URL}?role=mobile`);
     wsRef.current = ws;
-
-    ws.onopen = () => {
-      logEvent("info", "ws open");
-    };
 
     ws.onmessage = (ev) => {
       try {
@@ -80,14 +61,6 @@ export default function App() {
       } catch {}
     };
 
-    ws.onerror = () => {
-      logEvent("error", "ws error");
-    };
-
-    ws.onclose = (ev) => {
-      logEvent("warn", "ws closed", { code: ev.code, reason: ev.reason, wasClean: ev.wasClean });
-    };
-
     return () => ws.close();
   }, []);
 
@@ -101,7 +74,6 @@ export default function App() {
     setRoomId(rid);
     setPairToken(token);
 
-    logEvent("info", "pair attempt", { roomId: rid });
     send(MsgTypes.JoinRoom, { roomId: rid });
     send(MsgTypes.PairClaim, { pairToken: token }, rid);
   }
