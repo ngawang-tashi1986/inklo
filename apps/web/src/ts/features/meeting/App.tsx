@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+﻿import { useState, useRef, useEffect, useCallback } from "react";
 import { nanoid } from "nanoid";
 import { QRCodeCanvas } from "qrcode.react";
 import { MsgTypes, WS_VERSION, type WsEnvelope, type ChatMessagePayload } from "@inlko/shared";
@@ -198,7 +198,6 @@ export function App() {
   const {
     localStream,
     remoteStreams,
-    peerStatus,
     micEnabled,
     camEnabled,
     startMedia,
@@ -774,3 +773,5 @@ function VideoGrid({
     </div>
   );
 }
+
+

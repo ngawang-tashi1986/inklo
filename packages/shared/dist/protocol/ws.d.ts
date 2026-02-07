@@ -93,6 +93,22 @@ export type PairCreated = {
 export type PairClaim = {
     pairToken: string;
 };
+export type ChatMessagePayload = {
+    id: string;
+    userId: string;
+    name?: string;
+    text: string;
+    ts: number;
+    clientId?: string;
+};
+export type ChatSendPayload = {
+    text: string;
+    name?: string;
+    clientId?: string;
+};
+export type ChatHistoryPayload = {
+    messages: ChatMessagePayload[];
+};
 export declare const MsgTypes: {
     readonly JoinRoom: "room.join";
     readonly JoinedRoom: "room.joined";
@@ -118,4 +134,7 @@ export declare const MsgTypes: {
     readonly RtcAnswer: "rtc.answer";
     readonly RtcIce: "rtc.ice";
     readonly CursorMove: "cursor.move";
+    readonly ChatMessage: "chat.message";
+    readonly ChatHistory: "chat.history";
+    readonly ChatHistoryRequest: "chat.history.request";
 };

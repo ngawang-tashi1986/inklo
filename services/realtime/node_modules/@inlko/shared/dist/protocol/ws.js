@@ -33,5 +33,8 @@ export const MsgTypes = {
     RtcOffer: "rtc.offer",
     RtcAnswer: "rtc.answer",
     RtcIce: "rtc.ice",
-    CursorMove: "cursor.move"
+    CursorMove: "cursor.move",
+    ChatMessage: "chat.message",
+    ChatHistory: "chat.history",
+    ChatHistoryRequest: "chat.history.request"
 };
