@@ -27,9 +27,22 @@ export function useWebRtc({ roomId, localUserId, send }: UseWebRtcArgs) {
   const peersRef = useRef<Map<string, PeerState>>(new Map());
 
   const rtcConfig = useMemo<RTCConfiguration>(() => {
-    // No third-party services. This will work best on same LAN.
-    // Later you can add your own TURN server (coturn) here.
-    return { iceServers: [] };
+    const stunUrl = import.meta.env.VITE_STUN_URL as string | undefined;
+    const turnUrl = import.meta.env.VITE_TURN_URL as string | undefined;
+    const turnUsername = import.meta.env.VITE_TURN_USERNAME as string | undefined;
+    const turnCredential = import.meta.env.VITE_TURN_CREDENTIAL as string | undefined;
+
+    const iceServers: RTCIceServer[] = [];
+    if (stunUrl) iceServers.push({ urls: stunUrl });
+    if (turnUrl && turnUsername && turnCredential) {
+      iceServers.push({
+        urls: turnUrl,
+        username: turnUsername,
+        credential: turnCredential
+      });
+    }
+
+    return { iceServers };
   }, []);
 
   const attachLocalTracks = useCallback(
